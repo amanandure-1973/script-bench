@@ -1,8 +1,10 @@
 import os
 import json
 import re
+
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+
 
 load_dotenv()
 
@@ -13,28 +15,19 @@ if not API_KEY:
         "GEMINI_API_KEY is missing. Add it to your .env file."
     )
 
-genai.configure(api_key=API_KEY)
-
-model = genai.GenerativeModel("gemini-2.5-flash")
+client = genai.Client(api_key=API_KEY)
 
 
 def calculate_word_limit(target_seconds):
-    """
-    Estimate the number of spoken words based on
-    an average speaking speed of about 150 words/minute.
-    """
     words_per_minute = 150
     return max(40, int((target_seconds / 60) * words_per_minute))
 
 
 def clean_json_response(text):
-    """Remove Markdown code fences if the model returns them."""
     text = text.strip()
-
     text = re.sub(r"^```json\s*", "", text)
     text = re.sub(r"^```\s*", "", text)
     text = re.sub(r"\s*```$", "", text)
-
     return text.strip()
 
 
@@ -51,31 +44,30 @@ Topic: {topic}
 Target runtime: {target_seconds} seconds
 Approximate total word limit: {word_limit} words
 
-The script must contain exactly three parts:
+Create exactly three parts:
 
 1. hook
 - The first line of the video.
-- It must immediately create curiosity, relevance, or a strong reason to continue watching.
-- Avoid generic introductions such as "Hey guys, welcome back."
+- Create curiosity, relevance, or a strong reason to continue watching.
+- Do not use generic introductions.
 
 2. body
 - Explain the main idea clearly.
-- Give useful information, an example, steps, or a short story depending on the topic.
-- Keep the content relevant to the niche.
-- Make it sound natural when spoken aloud.
+- Give useful information, an example, steps, or a short story.
+- Keep it relevant to the niche.
+- Make it natural to speak aloud.
 
 3. cta
 - End with a natural call-to-action.
-- The CTA should fit the topic instead of sounding forced.
+- Make the CTA relevant to the topic.
 
 Important:
-- The complete spoken script should be close to the requested runtime.
-- Do not add unnecessary explanations.
-- Do not invent statistics unless they are clearly presented as examples.
+- Keep the complete script close to the requested runtime.
 - Use simple, natural spoken language.
+- Do not invent statistics.
 - Return ONLY valid JSON.
 
-Required JSON format:
+Required format:
 
 {{
     "hook": "string",
@@ -84,16 +76,18 @@ Required JSON format:
 }}
 """
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=prompt
+    )
 
-    raw_text = response.text
-    cleaned_text = clean_json_response(raw_text)
+    cleaned_text = clean_json_response(response.text)
 
     try:
         script = json.loads(cleaned_text)
     except json.JSONDecodeError as exc:
         raise ValueError(
-            f"Model returned invalid JSON:\n{raw_text}"
+            f"Model returned invalid JSON:\n{response.text}"
         ) from exc
 
     required_fields = ["hook", "body", "cta"]
@@ -109,3 +103,4 @@ Required JSON format:
             raise ValueError(f"{field} cannot be empty")
 
     return script
+
